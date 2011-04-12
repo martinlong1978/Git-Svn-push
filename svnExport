@@ -1,0 +1,146 @@
+#!/bin/bash
+
+export SYNC_BASE=/home/martin/gittest
+export GIT_ROOT=$SYNC_BASE/GIT
+export COMMIT_MESG=$SYNC_BASE/SVNtmp/messages
+export SVN_BASE_URL="http://www.rozel.net/svn/martin"
+export SVN_ROOT=$SYNC_BASE/SVNtmp
+
+
+branch_from_parent(){
+	echo "Branched $1 from $2 at rev $3"
+	git tag -f svnbranch/$1 $3
+	SVN_URL=$SVN_BASE_URL/$PROJECT/$2/trunk
+	svn copy $SVN_URL $SVN_BASE_URL/$PROJECT/$1/trunk 
+	mkdir -p $SVN_ROOT/$PROJECT/$1
+	cd $SVN_ROOT/$PROJECT
+	svn co $SVN_BASE_URL/$PROJECT/$1 $1
+}
+
+create_first(){
+	echo "New project branch: $1" 
+	git tag -f svnbranch/$1 $2
+	SVN_URL=$SVN_BASE_URL/$PROJECT/$1/trunk
+	svn mkdir --parents $SVN_URL -m "First branch" 
+	mkdir -p $SVN_ROOT/$PROJECT/$1
+	cd $SVN_ROOT/$PROJECT
+	svn co $SVN_URL $1
+}
+
+trim() { echo ${1/\s/}; }
+
+find_parent(){
+	echo git rev-list remotes/$branch 2>/dev/null
+	branch=$(trim $1)
+	revs=`git rev-list remotes/$branch 2>/dev/null`
+	for rev in $revs
+	do
+		for br in `git branch -r --contains --no-color $rev 2>/dev/null | tr -d \*\ |grep -v HEAD`
+		do
+			br=$(trim $br)
+			if [ "$br" != "$branch" ] ; then
+				branch_from_parent $branch $br $rev
+				return 0
+			fi
+		done
+		rev_last=$rev
+	done
+	create_first $branch $rev_last
+}
+
+
+
+
+doImport ()
+{
+
+	IFS=$'\x0a'
+
+	# Ensure directories exist
+	mkdir -p $COMMIT_MESG 
+
+	# Loop through the projects
+	for PROJECT in `ls $GIT_ROOT`
+	do
+
+		cd $GIT_ROOT/$PROJECT
+
+		#Loop through the branches for this project
+		for branch in `git branch -r --no-color | tr -d \*\ |grep -v HEAD`
+		do
+			branch=$(trim $branch)
+			cd $GIT_ROOT/$PROJECT
+
+			echo $branch
+
+			tag=`git tag -l svnbranch/$branch | wc -l`
+			if [ "$tag" == 0 ]; then
+				find_parent $branch
+			fi
+
+			return 0
+
+			# Get the last revision synced
+			export lastrev=`cat $META_ROOT/$branch`
+			echo Last revision: $lastrev
+
+			# Get the subversion working copy
+			export svndir=$SVN_ROOT/$PROJECT/$branch
+			mkdir -p $svndir
+
+			# Land in the git repo
+			cd $GIT_ROOT/$PROJECT
+			rm .git/index.lock &>/dev/null # cleanup if needed
+			
+			git fetch --all
+
+			# Get list of revisions not yet checked in to svn
+			export revlist="`git rev-list --first-parent --reverse $lastrev..origin/$branch`"
+
+			# Loop through the revisions
+			for revision in $revlist
+			do
+				# Checkout that revision and get the message
+				git checkout $revision
+				git log $revision~1..$revision --format=format:"%B%nCommitter: %an - Date: %aD" >$COMMIT_MESG/$revision.msg
+
+				# Sync it across to svn wc
+				cd $svndir
+
+				pwd
+
+				# Delete any files that have been deleted in GIT (but dont delete .svn dirs)
+				for svnfile in `find * |grep -v .svn`
+				do
+					if [ ! -e "$GIT_ROOT/$PROJECT/$svnfile" ]; then
+						echo Deleting $svnfile from svn working copy
+						rm -rf "$svnfile"
+					fi
+				done
+
+				# Now sync the rest across
+				cp -R $GIT_ROOT/$PROJECT/* $svndir
+				if [ $? -eq 0 ]; then 			
+
+					# Only if the copy is successful
+					rm -rf $svndir/.git
+
+					# Commit it
+					svn add --depth=infinity *
+					svn commit -F $COMMIT_MESG/$revision.msg
+					if [ $? -eq 0 ]; then 			
+						# Update the revision stored, if the commit was successful
+						echo $revision > $META_ROOT/$branch  	
+					fi
+				fi
+
+				cd $GIT_ROOT/$PROJECT
+			done
+		done
+	done
+}
+
+doImport
+
+#doImport 2>&1 |tee svn.log
+
