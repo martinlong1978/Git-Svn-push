@@ -5,7 +5,8 @@ export GIT_ROOT=$SYNC_BASE/GIT
 export COMMIT_MESG=$SYNC_BASE/SVNtmp/messages
 export SVN_BASE_URL="http://www.rozel.net/svn/martin"
 export SVN_ROOT=$SYNC_BASE/SVNtmp
-
+export REMOTE=origin
+export BRANCH_ORDER=(origin/trunk origin/1.0 origin/2.0)
 
 branch_from_parent(){
 	echo "Branched $1 from $2 at rev $3"
@@ -32,27 +33,27 @@ trim() { echo ${1/\s/}; }
 find_parent(){
 	echo git rev-list remotes/$branch 2>/dev/null
 	branch=$(trim $1)
-	revs=`git rev-list remotes/$branch 2>/dev/null`
+	revs=`git rev-list --first-parent remotes/$branch 2>/dev/null`
 	for rev in $revs
 	do
-		for br in `git branch -r --contains --no-color $rev 2>/dev/null | tr -d \*\ |grep -v HEAD`
+		for br_parent in `git branch -r --contains --no-color $rev 2>/dev/null | tr -d \*\ |grep -v HEAD`
 		do
-			br=$(trim $br)
-			if [ "$br" != "$branch" ] ; then
-				branch_from_parent $branch $br $rev
-				return 0
+			br_parent=$(trim $br_parent)
+			if [ "$br_parent" != "$branch" ] ; then
+				# Only if the parent exists already
+				if [ -d "$SVN_ROOT/$PROJECT/$br_parent" ] ; then
+					branch_from_parent $branch $br_parent $rev
+					return 0
+				fi
 			fi
 		done
 		rev_last=$rev
 	done
+	# Seems like this is the first branch
 	create_first $branch $rev_last
 }
 
-
-
-
-doImport ()
-{
+doImport (){
 
 	IFS=$'\x0a'
 
@@ -65,26 +66,47 @@ doImport ()
 
 		cd $GIT_ROOT/$PROJECT
 
-		#Loop through the branches for this project
-		for branch in `git branch -r --no-color | tr -d \*\ |grep -v HEAD`
-		do
-			branch=$(trim $branch)
-			cd $GIT_ROOT/$PROJECT
+		git fetch --all
 
+		for i in `git "for-each-ref" --format="%(refname:short)" refs/remotes/$REMOTE | tr -d \*\ |grep -v HEAD`
+		do
+			allbranches=("${allbranches[@]}" "$i")
+		done
+
+		for i in "${BRANCH_ORDER[@]}"
+		do
+			allbranches=("${allbranches[@]/$i/}")
+			branches=("${branches[@]}" "$i")
+		done		
+
+		for i in "${allbranches[@]}"
+		do
+			if [ "$i" != "" ]
+			then
+				branches=("${branches[@]}" "$i")
+			fi
+		done		
+
+		#Loop through the branches for this project
+		for branch in "${branches[@]}"
+		do
+			cd $GIT_ROOT/$PROJECT
 			echo $branch
 
+			#No tag yet? Find the parent, and create a branch.
 			tag=`git tag -l svnbranch/$branch | wc -l`
-			if [ "$tag" == 0 ]; then
+			if [ "$tag" == 0 ] 
+			then
 				find_parent $branch
 			fi
 
-			return 0
+			cd $GIT_ROOT/$PROJECT
 
 			# Get the last revision synced
-			export lastrev=`cat $META_ROOT/$branch`
+			export lastrev=`git show-ref -s --dereference svnbranch/$branch`
 			echo Last revision: $lastrev
 
-			# Get the subversion working copy
+			# Get the subversion working copy, and ensure it exists
 			export svndir=$SVN_ROOT/$PROJECT/$branch
 			mkdir -p $svndir
 
@@ -92,17 +114,18 @@ doImport ()
 			cd $GIT_ROOT/$PROJECT
 			rm .git/index.lock &>/dev/null # cleanup if needed
 			
+			# Fetch the full repo
 			git fetch --all
 
 			# Get list of revisions not yet checked in to svn
-			export revlist="`git rev-list --first-parent --reverse $lastrev..origin/$branch`"
+			export revlist="`git rev-list --first-parent --reverse $lastrev..$branch`"
 
 			# Loop through the revisions
 			for revision in $revlist
 			do
 				# Checkout that revision and get the message
 				git checkout $revision
-				git log $revision~1..$revision --format=format:"%B%nCommitter: %an - Date: %aD" >$COMMIT_MESG/$revision.msg
+				git log -1 --format=format:"%B%nCommitter: %an - Date: %aD" >$COMMIT_MESG/$revision.msg
 
 				# Sync it across to svn wc
 				cd $svndir
@@ -110,7 +133,7 @@ doImport ()
 				pwd
 
 				# Delete any files that have been deleted in GIT (but dont delete .svn dirs)
-				for svnfile in `find * |grep -v .svn`
+				for svnfile in `find . |grep -v .svn`
 				do
 					if [ ! -e "$GIT_ROOT/$PROJECT/$svnfile" ]; then
 						echo Deleting $svnfile from svn working copy
@@ -129,8 +152,9 @@ doImport ()
 					svn add --depth=infinity *
 					svn commit -F $COMMIT_MESG/$revision.msg
 					if [ $? -eq 0 ]; then 			
+						cd $GIT_ROOT/$PROJECT
 						# Update the revision stored, if the commit was successful
-						echo $revision > $META_ROOT/$branch  	
+						git tag -f svnbranch/$branch $revision
 					fi
 				fi
 
