@@ -164,7 +164,7 @@ doImport (){
 	done
 }
 
-doImport
+#doImport
 
-#doImport 2>&1 |tee svn.log
+doImport 2>&1 |tee svn.log
 
