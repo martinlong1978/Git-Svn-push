@@ -28,11 +28,10 @@ create_first(){
 	svn co $SVN_URL $1
 }
 
-trim() { echo ${1/\s/}; }
 
 find_parent(){
 	echo git rev-list remotes/$branch 2>/dev/null
-	branch=$(trim $1)
+	branch=$1
 	revs=`git rev-list --first-parent remotes/$branch 2>/dev/null`
 	for rev in $revs
 	do
@@ -71,21 +70,33 @@ doImport (){
 		for i in `git "for-each-ref" --format="%(refname:short)" refs/remotes/$REMOTE | tr -d \*\ |grep -v HEAD`
 		do
 			allbranches=("${allbranches[@]}" "$i")
+			echo "Adding branch: $i"
 		done
-
+	
+		echo "All branches: ${allbranches[@]}"
+		
 		for i in "${BRANCH_ORDER[@]}"
 		do
+			echo "Defining upfront: $i"
 			allbranches=("${allbranches[@]/$i/}")
 			branches=("${branches[@]}" "$i")
 		done		
+
+		echo "Branches: ${branches[@]}"
+		echo "Remaining all branches: ${allbranches[@]}"
+
 
 		for i in "${allbranches[@]}"
 		do
 			if [ "$i" != "" ]
 			then
+				echo "Bringing in: $i"
 				branches=("${branches[@]}" "$i")
 			fi
 		done		
+
+		echo "Branches: ${branches[@]}"
+
 
 		#Loop through the branches for this project
 		for branch in "${branches[@]}"
@@ -125,19 +136,21 @@ doImport (){
 			do
 				# Checkout that revision and get the message
 				git checkout $revision
-				git log -1 --format=format:"%B%nCommitter: %an - Date: %aD" >$COMMIT_MESG/$revision.msg
+				git log -1 --format=format:"%B%nCommitter: %an - Date: %aD" |grep -v git-svn-id >$COMMIT_MESG/$revision.msg
 
 				# Sync it across to svn wc
 				cd $svndir
 
 				pwd
+				
+				svn update
 
 				# Delete any files that have been deleted in GIT (but dont delete .svn dirs)
 				for svnfile in `find . |grep -v .svn`
 				do
 					if [ ! -e "$GIT_ROOT/$PROJECT/$svnfile" ]; then
 						echo Deleting $svnfile from svn working copy
-						rm -rf "$svnfile"
+						svn rm --force "$svnfile"
 					fi
 				done
 
@@ -150,6 +163,15 @@ doImport (){
 
 					# Commit it
 					svn add --depth=infinity *
+					
+					for i in `svn status |grep \?`
+					do
+						if [ "$i" != "?" ]; then
+							j=`echo $i|sed 's/\?\s*//'`
+							svn add $j
+						fi
+					done
+					
 					svn commit -F $COMMIT_MESG/$revision.msg
 					if [ $? -eq 0 ]; then 			
 						cd $GIT_ROOT/$PROJECT
