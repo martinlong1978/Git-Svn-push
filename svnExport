@@ -1,12 +1,12 @@
 #!/bin/bash
 
-export SYNC_BASE=/home/martin/gittest
+export SYNC_BASE=/home/martin.long/GIT/sync
 export GIT_ROOT=$SYNC_BASE/GIT
-export COMMIT_MESG=$SYNC_BASE/SVNtmp/messages
-export SVN_BASE_URL="http://www.rozel.net/svn/martin"
 export SVN_ROOT=$SYNC_BASE/SVNtmp
+export COMMIT_MESG=$SYNC_BASE/SVNtmp/messages
+export SVN_BASE_URL="https://www.rozel.net/svn/martin/"
 export REMOTE=origin
-export BRANCH_ORDER=(origin/trunk origin/1.0 origin/2.0)
+export BRANCH_ORDER=(origin/master origin/2.8.0 origin/2.8.1 origin/2.8.2)
 
 branch_from_parent(){
 	echo "Branched $1 from $2 at rev $3"
