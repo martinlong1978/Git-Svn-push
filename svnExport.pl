@@ -169,7 +169,6 @@ sub clearsvndir
 	{
 		chomp($svnfile);
 		$svnfile=~s/^\.\///;
-		print "Checking for: $GIT_ROOT/$project/$svnfile\n";
 		unless (-e "$GIT_ROOT/$project/$svnfile")
 		{
 			# Check it still exists... may have been deleted with a parent directory
@@ -236,8 +235,8 @@ sub processbranch
 			chomp($path);
 			if ("$path" ne "?" )
 			{
-				my @fields=split(/\s+/,"$path");
-				system("svn add \"$fields[1]\"") == 0
+				$path=~s/\?\s+(.*)/\1/;
+				system("svn add \"$path\"") == 0
 					or die "Could not add files to svn index";
 			}
 		}
