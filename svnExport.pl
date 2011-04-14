@@ -273,12 +273,12 @@ sub parse_config_file {
 
     while (<CONFIG>) {
         $config_line=$_;
-        chomp ($config_line);          # Get rid of the trailling \n
-        $config_line =~ s/^\s*//;     # Remove spaces at the start of the line
-        $config_line =~ s/\s*$//;     # Remove spaces at the end of the line
-        if ( ($config_line !~ /^#/) && ($config_line ne "") ){    # Ignore lines starting with # and blank lines
-            ($Name, $Value) = split (/=/, $config_line);          # Split each line into name value pairs
-            $$Config{$Name} = $Value;                             # Create a hash of the name value pairs
+        chomp ($config_line);
+        $config_line =~ s/^\s*//;
+        $config_line =~ s/\s*$//;
+        if ( ($config_line !~ /^#/) && ($config_line ne "") ){
+            ($Name, $Value) = split (/=/, $config_line);
+            $$Config{$Name} = $Value;
         }
     }
 
