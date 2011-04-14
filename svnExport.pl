@@ -11,6 +11,7 @@ my $COMMIT_MESG="$SVN_ROOT/messages";
 my $REMOTE="origin";
 my $SVN_BASE_URL;
 my @BRANCH_ORDER;
+my $TRUNK;
 
 # These are loaded per-project
 my @BRANCH_ORDER;
@@ -22,8 +23,16 @@ sub branchfromparent
 	my $branch=$_[1];
 	my $br_parent=$_[2];
 	my $revision=$_[3];
-	my $svn_from="$SVN_BASE_URL/$br_parent/trunk";
-	my $svn_to="$SVN_BASE_URL/$branch/trunk";
+	my $svn_from;
+	
+	if($br_parent eq $TRUNK)
+	{
+		$svn_from="$SVN_BASE_URL/trunk";
+	}else{
+		$svn_from="$SVN_BASE_URL/branches/$br_parent/trunk";
+	}
+	
+	my $svn_to="$SVN_BASE_URL/branches/$branch/trunk";
 	
 	print "Branching $branch from $br_parent at rev $revision\n";
 
@@ -50,7 +59,7 @@ sub createfirst
 	my $project=$_[0];
 	my $branch=$_[1];
 	my $revision=$_[2];
-	my $svn_url="$SVN_BASE_URL/$branch/trunk";
+	my $svn_url="$SVN_BASE_URL/trunk";
 
 	print "New project branch: $branch\n";
 	
@@ -74,7 +83,7 @@ sub findparent
 	my $branch=$_[0];
 	my $project=$_[1];
 	print "Looking for parent of: $branch\n";
-	open(REVS, "git rev-list --first-parent remotes/$branch |") or die "Broken";
+	open(REVS, "git rev-list --first-parent remotes/$REMOTE/$branch |") or die "Broken";
 	my @revisions=<REVS>;
 	close(REVS);
 	
@@ -122,13 +131,14 @@ sub processproject
 	
 	for my $branch (@BRANCH_ORDER)
 	{
-		push(@branches, $branch);
+		push(@branches, "$branch");
 	}
 	
 	for my $branch (@allbranches)
 	{
 		chomp($branch);
-		if(!grep($branch eq $_, @BRANCH_ORDER))
+		$branch=~s/$REMOTE\/(.*)/\1/;
+		if(!grep($branch eq "$REMOTE/$_", @BRANCH_ORDER))
 		{
 			push(@branches, $branch);
 		}
@@ -199,7 +209,7 @@ sub processbranch
 	
 	mkpath $svndir;
 	
-	open(BRANCHREVS, "git rev-list --first-parent --reverse ${lastrev}..${branch}|");
+	open(BRANCHREVS, "git rev-list --first-parent --reverse ${lastrev}..${REMOTE}/${branch}|");
 	for my $revision (<BRANCHREVS>)
 	{
 		chomp($revision);
@@ -293,6 +303,7 @@ sub doimport
 		$SVN_BASE_URL=$config{"SVN_URL"};
 		my $BRANCHES=$config{"BRANCH_ORDER"};
 		@BRANCH_ORDER=split(",", $BRANCHES);
+		$TRUNK=$BRANCH_ORDER[0];
 		
 		&processproject(basename($project));
 	}
