@@ -25,7 +25,7 @@ sub branchfromparent
 	print "Branching $branch from $br_parent at rev $revision\n";
 
 	my $svnrev=`cat $SVN_ROOT/$project.revcache |grep $revision |cut -d " " -f 1`;
-	$svnrev=~s/\n//;
+	chomp($svnrev);
 	
 	#Create tracking tag in GIT
 	system("git tag -f svnbranch/$branch $revision") == 0 
@@ -79,7 +79,7 @@ sub findparent
 	my %revcache = ();
 	for $cacheentry (<REVCACHE>)
 	{
-		$cacheentry =~ s/\n//;
+		chomp($cacheentry);
 		@entry = split(/ /, $cacheentry);
 		$revcache{$entry[2]}=$entry[1];
 	}
@@ -87,7 +87,7 @@ sub findparent
 	
 	for $revision (@revisions)
 	{
-		$revision =~ s/\n//;
+		chomp($revision);
 		print "Looking for parent in rev: $revision\n";
 		#$br_parent=`cat $SVN_ROOT/revcache |grep $revision | cut -d " " -f 2`;
 		$br_parent=$revcache{$revision};
@@ -123,7 +123,7 @@ sub processproject
 	
 	for $branch (@allbranches)
 	{
-		$branch =~ s/\n//;
+		chomp($branch);
 		if(!grep($branch eq $_, @BRANCH_ORDER))
 		{
 			push(@branches, $branch);
@@ -153,7 +153,7 @@ sub clearsvndir
 	open(DELFILES, "find . |grep -v .svn|");
 	for $svnfile (<DELFILES>)
 	{
-		$svnfile=~s/\n//;
+		chomp($svnfile);
 		$svnfile=~s/^\.\///;
 		print "Checking for: $GIT_ROOT/$project/$svnfile\n";
 		unless (-e "$GIT_ROOT/$project/$svnfile")
@@ -174,7 +174,7 @@ sub processbranch
 	chdir "$GIT_ROOT/$project" or die "Can't change to project directory: $project";
 	
 	$tag=`git tag -l svnbranch/$branch | wc -l`;
-	$tag=~s/\n//;
+	chomp($tag);
 	if($tag < 1)
 	{
 		&findparent($branch, $project);
@@ -183,7 +183,7 @@ sub processbranch
 	chdir "$GIT_ROOT/$project" or die "Can't change to project directory: $project";
 	
 	$lastrev=`git show-ref -s --dereference svnbranch/$branch`;
-	$lastrev=~s/\n//;
+	chomp($lastrev);
 	
 	print "Last revision synced: $lastrev\n";
 	
@@ -194,7 +194,7 @@ sub processbranch
 	open(BRANCHREVS, "git rev-list --first-parent --reverse ${lastrev}..${branch}|");
 	for $revision (<BRANCHREVS>)
 	{
-		$revision=~s/\n//;
+		chomp($revision);
 		print "Preparing to write revision $revision\n";
 		chdir "$GIT_ROOT/$project";
 
@@ -206,7 +206,7 @@ sub processbranch
 		# Update and clear out any deleted files
 		&clearsvndir($project, $svndir);
 		
-		system("cp -Rv $GIT_ROOT/$project/* $svndir") == 0
+		system("cp -RT $GIT_ROOT/$project $svndir") == 0
 			or die "Failed to sync dir: $GIT_ROOT/$project to: $svndir";
 		
 		system("rm -rf $svndir/.git") == 0
@@ -215,11 +215,11 @@ sub processbranch
 		open(TOADD, "svn status |grep \?|");
 		for $path (<TOADD>)
 		{
-			$path=~s/\n//;
+			chomp($path);
 			if ("$path" ne "?" )
 			{
 				@fields=split(/\s+/,"$path");
-				system("svn add $fields[1]") == 0
+				system("svn add \"$fields[1]\"") == 0
 					or die "Could not add files to svn index";
 			}
 		}
@@ -231,7 +231,8 @@ sub processbranch
 			or die "Could not connect to $svn_url";
 		
 		$svnrev=`svn info |grep 'Last Changed Rev' | cut -d " " -f 4`;
-		$svnrev=~s/\n//;
+		chomp($svnrev);
+		
 		open(REVCACHE, ">>$SVN_ROOT/$project.revcache");
 		print REVCACHE "$svnrev $branch $revision\n";
 		close(REVCACHE);
