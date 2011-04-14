@@ -9,13 +9,11 @@ my $GIT_ROOT="$SYNC_BASE/GIT";
 my $SVN_ROOT="$SYNC_BASE/workingdata";
 my $COMMIT_MESG="$SVN_ROOT/messages";
 my $REMOTE="origin";
-my $SVN_BASE_URL;
-my @BRANCH_ORDER;
-my $TRUNK;
 
 # These are loaded per-project
 my @BRANCH_ORDER;
 my $SVN_BASE_URL;
+my $TRUNK;
 
 sub branchfromparent
 {
@@ -127,7 +125,7 @@ sub processproject
 	my @allbranches=<REFS>;
 	close(REFS);
 	
-	my @branches=();
+	my @branches;
 	
 	for my $branch (@BRANCH_ORDER)
 	{
@@ -138,7 +136,7 @@ sub processproject
 	{
 		chomp($branch);
 		$branch=~s/$REMOTE\/(.*)/\1/;
-		if(!grep($branch eq "$REMOTE/$_", @BRANCH_ORDER))
+		if(!grep($branch eq "$_", @BRANCH_ORDER))
 		{
 			push(@branches, $branch);
 		}
