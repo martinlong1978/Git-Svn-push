@@ -158,9 +158,13 @@ sub clearsvndir
 		print "Checking for: $GIT_ROOT/$project/$svnfile\n";
 		unless (-e "$GIT_ROOT/$project/$svnfile")
 		{
-			print "Deleting $svnfile from svn working copy\n";
-			system("svn rm --force \"$svnfile\"") == 0
-				or die "Could not connect to $svn_url";
+			# Check it still exists... may have been deleted with a parent directory
+			if (-e "$svnfile")
+			{
+				print "Deleting $svnfile from svn working copy\n";
+				system("svn rm --force \"$svnfile\"") == 0
+					or die "Could not delete $svnfile";
+			}
 		}
 	}
 	close(DELFILES);
