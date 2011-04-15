@@ -17,10 +17,7 @@ my $TRUNK;
 
 sub branchfromparent
 {
-	my $project=$_[0];
-	my $branch=$_[1];
-	my $br_parent=$_[2];
-	my $revision=$_[3];
+	my ($project, $branch, $br_parent, $revision)=@_;
 	my $svn_from;
 	
 	if($br_parent eq $TRUNK)
@@ -54,9 +51,8 @@ sub branchfromparent
 
 sub createfirst
 {
-	my $project=$_[0];
-	my $branch=$_[1];
-	my $revision=$_[2];
+	my ($project, $branch, $revision)=@_;
+	
 	my $svn_url="$SVN_BASE_URL/trunk";
 
 	print "New project branch: $branch\n";
@@ -78,8 +74,7 @@ sub createfirst
 
 sub findparent
 {
-	my $branch=$_[0];
-	my $project=$_[1];
+	my ($branch, $project)=@_;
 	print "Looking for parent of: $branch\n";
 	open(REVS, "git rev-list --first-parent remotes/$REMOTE/$branch |") or die "Broken";
 	my @revisions=<REVS>;
@@ -153,8 +148,7 @@ sub processproject
 
 sub clearsvndir
 {
-	my $project=$_[0];
-	my $svndir=$_[1];
+	my ($project, $svndir)=@_;
 	
 	chdir $svndir or die "Couldn't cd to $svndir\n";
 	
@@ -181,9 +175,32 @@ sub clearsvndir
 	close(DELFILES);
 }
 
+sub syncsvnfiled
+{
+	my ($project, $svndir) = @_;
+	system("cp -RT $GIT_ROOT/$project $svndir") == 0
+		or die "Failed to sync dir: $GIT_ROOT/$project to: $svndir";
+	
+	system("rm -rf $svndir/.git") == 0
+		or die "Could not remove .git dir from svn working copy";
+
+	open(TOADD, "svn status |grep \?|");
+	for my $path (<TOADD>)
+	{
+		chomp($path);
+		if ("$path" ne "?" )
+		{
+			$path=~s/\?\s+(.*)/\1/;
+			system("svn add \"$path\"") == 0
+				or die "Could not add files to svn index";
+		}
+	}
+	close(TOADD);
+}
+
 sub processbranch
 {
-	my ($project, $branch) = ($_[0],$_[1]);
+	my ($project, $branch) = @_;
 	print "Processing $branch of $project\n";
 
 	chdir "$GIT_ROOT/$project" or die "Can't change to project directory: $project";
@@ -220,25 +237,8 @@ sub processbranch
 		
 		# Update and clear out any deleted files
 		&clearsvndir($project, $svndir);
-		
-		system("cp -RT $GIT_ROOT/$project $svndir") == 0
-			or die "Failed to sync dir: $GIT_ROOT/$project to: $svndir";
-		
-		system("rm -rf $svndir/.git") == 0
-			or die "Could not remove .git dir from svn working copy";
 
-		open(TOADD, "svn status |grep \?|");
-		for my $path (<TOADD>)
-		{
-			chomp($path);
-			if ("$path" ne "?" )
-			{
-				$path=~s/\?\s+(.*)/\1/;
-				system("svn add \"$path\"") == 0
-					or die "Could not add files to svn index";
-			}
-		}
-		close(TOADD);
+		&syncsvnfiles($project, $svndir);		
 		
 		system("svn commit -F $COMMIT_MESG/$revision") == 0
 			or die "Commit failed.";
@@ -260,7 +260,8 @@ sub processbranch
 	close(BRANCHREVS);
 }
 
-sub parse_config_file {
+sub parse_config_file 
+{
 
     my ($config_line, $Name, $Value, $Config, $File);
 
@@ -271,12 +272,14 @@ sub parse_config_file {
     open (CONFIG, "$File")
 	    or die "ERROR: Config file not found : $File";
 
-    while (<CONFIG>) {
+    while (<CONFIG>) 
+    {
         $config_line=$_;
         chomp ($config_line);
         $config_line =~ s/^\s*//;
         $config_line =~ s/\s*$//;
-        if ( ($config_line !~ /^#/) && ($config_line ne "") ){
+        if ( ($config_line !~ /^#/) && ($config_line ne "") )
+        {
             ($Name, $Value) = split (/=/, $config_line);
             $$Config{$Name} = $Value;
         }
