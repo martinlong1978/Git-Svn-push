@@ -5,11 +5,3 @@ It will push up all of your branches, finding, where possible, the correct branc
 Still needs tidying up. I'd like to try and figure out someday how to make this work without SVN working copies, and maybe ever with a bare GIT repo. 
 
 
-
-TODO: 
-
- - Finish Perl migration
- - Start to integrate the GIT::Svn package, to utilize any clever stuff from there
- - Use a config file, instead of variables
- - Eliminate need for SVN working copies
- - Allow to work with a bare repo.
