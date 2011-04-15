@@ -15,19 +15,24 @@ my @BRANCH_ORDER;
 my $SVN_BASE_URL;
 my $TRUNK;
 
+sub geturlforbranch
+{
+	my $branch = $_[0]; 
+	
+	if($branch eq $TRUNK)
+	{
+		return "$SVN_BASE_URL/trunk";
+	}else{
+		return "$SVN_BASE_URL/branches/$branch/trunk";
+	}
+}
+
 sub branchfromparent
 {
 	my ($project, $branch, $br_parent, $revision)=@_;
-	my $svn_from;
-	
-	if($br_parent eq $TRUNK)
-	{
-		$svn_from="$SVN_BASE_URL/trunk";
-	}else{
-		$svn_from="$SVN_BASE_URL/branches/$br_parent/trunk";
-	}
-	
-	my $svn_to="$SVN_BASE_URL/branches/$branch/trunk";
+
+	my $svn_from = &geturlforbranch($br_parent);
+	my $svn_to=&geturlforbranch($branch);
 	
 	print "Branching $branch from $br_parent at rev $revision\n";
 
@@ -38,14 +43,9 @@ sub branchfromparent
 	system("git tag -f svnbranch/$branch $revision") == 0 
 		or die "Could not create tracking tag";
 	
-	#Branch and checkout working copy
-	print "svn copy --parents  $svn_from\@$svnrev $svn_to -m \"Branch for $branch\"";
+	#Branch 
 	system("svn copy --parents  $svn_from\@$svnrev $svn_to -m \"Branch for $branch\"") == 0
 		or die "Could not create branch";
-	mkpath "$SVN_ROOT/$project/$1";
-	chdir "$SVN_ROOT/$project";
-	system("svn co $svn_to $branch") == 0
-		or die "Could not checkout branch";
 
 }
 
@@ -53,7 +53,7 @@ sub createfirst
 {
 	my ($project, $branch, $revision)=@_;
 	
-	my $svn_url="$SVN_BASE_URL/trunk";
+	my $svn_url=&geturlforbranch($branch);
 
 	print "New project branch: $branch\n";
 	
@@ -61,15 +61,29 @@ sub createfirst
 	system("git tag -f svnbranch/$branch $revision") == 0
 		or die "GIT Failure";
 	
+	#Checkout for initial commit
+	system("git checkout $revision") == 0
+		or die "GIT Failure";
+	
 	#Create branch and checkout working copy
-	system("svn mkdir --parents $svn_url -m \"First branch\"") == 0
+	system("svn mkdir --parents $svn_url -m \"Creating trunk\"") == 0
 		or die "Could not connect to $svn_url"; 
-	mkpath "$SVN_ROOT/$project/$branch" 
-		or die("Couldn't make svn temp store: $SVN_ROOT/$project/$branch");
-	chdir "$SVN_ROOT/$project" 
-		or die("Couldn't jump to svn temp store: $SVN_ROOT/$project/$branch");
-	system("svn co $svn_url $branch") == 0
+	mkpath "$SVN_ROOT/$project/temp" 
+		or die("Couldn't make svn temp store: $SVN_ROOT/$project/temp");
+	chdir "$SVN_ROOT/$project/temp" 
+		or die("Couldn't jump to svn temp store: $SVN_ROOT/$project/temp");
+	system("svn co $svn_url ../temp") == 0
 		or die "Could not connect to $svn_url";
+		
+	# Initialise the first commit. GIT won't do this for us :(	
+	&syncsvnfiles($project, "$SVN_ROOT/$project/temp");
+
+	system("svn commit -m \"Initial commit.\"") == 0
+		or die "Commit failed.";
+
+	# temp dir is no longer needed
+	system("rm -rf \"$SVN_ROOT/$project/temp\"");
+		
 }
 
 sub findparent
@@ -146,36 +160,7 @@ sub processproject
 	
 }
 
-sub clearsvndir
-{
-	my ($project, $svndir)=@_;
-	
-	chdir $svndir or die "Couldn't cd to $svndir\n";
-	
-	system("svn up") == 0
-		or die "Could not update working copy";
-	
-	# Delete any files that have been deleted in GIT (but dont delete .svn dirs)
-	open(DELFILES, "find . |grep -v .svn|");
-	for my $svnfile (<DELFILES>)
-	{
-		chomp($svnfile);
-		$svnfile=~s/^\.\///;
-		unless (-e "$GIT_ROOT/$project/$svnfile")
-		{
-			# Check it still exists... may have been deleted with a parent directory
-			if (-e "$svnfile")
-			{
-				print "Deleting $svnfile from svn working copy\n";
-				system("svn rm --force \"$svnfile\"") == 0
-					or die "Could not delete $svnfile";
-			}
-		}
-	}
-	close(DELFILES);
-}
-
-sub syncsvnfiled
+sub syncsvnfiles
 {
 	my ($project, $svndir) = @_;
 	system("cp -RT $GIT_ROOT/$project $svndir") == 0
@@ -230,32 +215,32 @@ sub processbranch
 		print "Preparing to write revision $revision\n";
 		chdir "$GIT_ROOT/$project";
 
-		system("git checkout $revision") == 0
-			or die "GIT checkout failed";
-		system("git log -1 --format=format:\"\%B\%nCommitter: \%an - Date: \%aD\" |grep -v git-svn-id >$COMMIT_MESG/${revision}") == 0
+		#system("git checkout $revision") == 0
+		#	or die "GIT checkout failed";
+		system("git log -1 --format=format:\"\%B\%nCommitter: \%an - Date: \%aD\" $revision |grep -v git-svn-id >$COMMIT_MESG/${revision}") == 0
 			or die "Could not get log message";
 		
-		# Update and clear out any deleted files
-		&clearsvndir($project, $svndir);
+		my $svn_url = &geturlforbranch($branch);
+		
+		open(COMMIT, "git svn commit-diff -r HEAD $revision~1 $revision  $svn_url -F $COMMIT_MESG/$revision 2>&1 |");
+		while(<COMMIT>)
+		{
+			print $_;
+			chomp;
+			if($_ =~ m/^Committed/)
+			{
+				#Committed rxxxx
+				$_ =~ s/Committed r([0-9]*)/\1/;
+				open(REVCACHE, ">>$SVN_ROOT/$project.revcache");
+				print REVCACHE "$_ $branch $revision\n";
+				close(REVCACHE);
 
-		&syncsvnfiles($project, $svndir);		
-		
-		system("svn commit -F $COMMIT_MESG/$revision") == 0
-			or die "Commit failed.";
-		system("svn up") == 0
-			or die "Couldn't update SVN working copy";
-		
-		my $svnrev=`svn info |grep 'Last Changed Rev' | cut -d " " -f 4`;
-		chomp($svnrev);
-		
-		open(REVCACHE, ">>$SVN_ROOT/$project.revcache");
-		print REVCACHE "$svnrev $branch $revision\n";
-		close(REVCACHE);
-		
-		chdir "$GIT_ROOT/$project";
-		system("git tag -f svnbranch/$branch $revision") == 0
-			or die "Could not create GIT tracking tag";
-
+				chdir "$GIT_ROOT/$project";
+				system("git tag -f svnbranch/$branch $revision") == 0
+					or die "Could not create GIT tracking tag";
+			}
+		}
+		close(COMMIT);
 	}
 	close(BRANCHREVS);
 }
