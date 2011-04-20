@@ -63,7 +63,6 @@ sub branchfromparent
 	#Branch 
 	system("svn copy --parents  $svn_from\@$svnrev $svn_to -m \"Branch for $branch\"") == 0
 		or die "Could not create branch";
-
 }
 
 sub createfirst
@@ -100,7 +99,6 @@ sub createfirst
 
 	# temp dir is no longer needed
 	system("rm -rf \"$SVN_ROOT/$project/temp\"");
-
 }
 
 sub findparent
@@ -173,7 +171,6 @@ sub processproject
 	{
 		processbranch($project, $branch);
 	}
-
 }
 
 sub syncsvnfiles
@@ -261,7 +258,6 @@ sub processbranch
 
 sub parse_config_file 
 {
-
     my ($File, $Config) = @_;
     my ($config_line, $Name, $Value);
 
@@ -284,7 +280,6 @@ sub parse_config_file
     }
 
     close(CONFIG);
-
 }
 
 sub doimport
@@ -305,7 +300,6 @@ sub doimport
 
 		processproject(basename($project));
 	}
-
 }
 
 doimport;
