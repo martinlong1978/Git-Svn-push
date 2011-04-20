@@ -32,32 +32,34 @@ my $TRUNK;
 
 sub geturlforbranch
 {
-	my $branch = $_[0]; 
-	
+	my ($branch) = @_;
+
 	if($branch eq $TRUNK)
 	{
 		return "$SVN_BASE_URL/trunk";
-	}else{
+	}
+	else
+	{
 		return "$SVN_BASE_URL/branches/$branch/trunk";
 	}
 }
 
 sub branchfromparent
 {
-	my ($project, $branch, $br_parent, $revision)=@_;
+	my ($project, $branch, $br_parent, $revision) = @_;
 
-	my $svn_from = &geturlforbranch($br_parent);
-	my $svn_to=&geturlforbranch($branch);
-	
+	my $svn_from = geturlforbranch($br_parent);
+	my $svn_to = geturlforbranch($branch);
+
 	print "Branching $branch from $br_parent at rev $revision\n";
 
-	my $svnrev=`cat $SVN_ROOT/$project.revcache |grep $revision |cut -d " " -f 1`;
+	my $svnrev = `cat $SVN_ROOT/$project.revcache |grep $revision |cut -d " " -f 1`;
 	chomp($svnrev);
-	
+
 	#Create tracking tag in GIT
 	system("git tag -f svnbranch/$branch $revision") == 0 
 		or die "Could not create tracking tag";
-	
+
 	#Branch 
 	system("svn copy --parents  $svn_from\@$svnrev $svn_to -m \"Branch for $branch\"") == 0
 		or die "Could not create branch";
@@ -66,123 +68,123 @@ sub branchfromparent
 
 sub createfirst
 {
-	my ($project, $branch, $revision)=@_;
-	
-	my $svn_url=&geturlforbranch($branch);
+	my ($project, $branch, $revision) = @_;
 
-	print "New project branch: $branch\n";
-	
+	my $svn_url = geturlforbranch($branch);
+
+	print("New project branch: $branch\n");
+
 	#Create tracking tag in GIT
 	system("git tag -f svnbranch/$branch $revision") == 0
 		or die "GIT Failure";
-	
+
 	#Checkout for initial commit
 	system("git checkout $revision") == 0
 		or die "GIT Failure";
-	
+
 	#Create branch and checkout working copy
 	system("svn mkdir --parents $svn_url -m \"Creating trunk\"") == 0
-		or die "Could not connect to $svn_url"; 
-	mkpath "$SVN_ROOT/$project/temp" 
+		or die("Could not connect to $svn_url");
+	mkpath("$SVN_ROOT/$project/temp")
 		or die("Couldn't make svn temp store: $SVN_ROOT/$project/temp");
-	chdir "$SVN_ROOT/$project/temp" 
+	chdir("$SVN_ROOT/$project/temp")
 		or die("Couldn't jump to svn temp store: $SVN_ROOT/$project/temp");
 	system("svn co $svn_url ../temp") == 0
-		or die "Could not connect to $svn_url";
-		
+		or die("Could not connect to $svn_url");
+
 	# Initialise the first commit. GIT won't do this for us :(	
-	&syncsvnfiles($project, "$SVN_ROOT/$project/temp");
+	syncsvnfiles($project, "$SVN_ROOT/$project/temp");
 
 	system("svn commit -m \"Initial commit.\"") == 0
-		or die "Commit failed.";
+		or die("Commit failed.");
 
 	# temp dir is no longer needed
 	system("rm -rf \"$SVN_ROOT/$project/temp\"");
-		
+
 }
 
 sub findparent
 {
-	my ($branch, $project)=@_;
-	print "Looking for parent of: $branch\n";
-	open(REVS, "git rev-list --first-parent remotes/$REMOTE/$branch |") or die "Broken";
-	my @revisions=<REVS>;
-	close(REVS);
-	
+	my ($branch, $project) = @_;
+	print("Looking for parent of: $branch\n");
+
 	open(REVCACHE, "$SVN_ROOT/$project.revcache");
 	my %revcache = ();
 	for my $cacheentry (<REVCACHE>)
 	{
 		chomp($cacheentry);
 		my @entry = split(/ /, $cacheentry);
-		$revcache{$entry[2]}=$entry[1];
+		$revcache{$entry[2]} = $entry[1];
 	}
 	close(REVCACHE);
-	
+
 	my $rev_last;
-	for my $revision (@revisions)
+
+	open(REVS, "git rev-list --first-parent remotes/$REMOTE/$branch |") or die "Broken";
+
+	for my $revision (<REVS>)
 	{
 		chomp($revision);
-		print "Looking for parent in rev: $revision\n";
-		my $br_parent=$revcache{$revision};
+		print("Looking for parent in rev: $revision\n");
+		my $br_parent = $revcache{$revision};
 		if($br_parent ne "")
 		{
-			&branchfromparent($project, $branch, $br_parent, $revision);
+			branchfromparent($project, $branch, $br_parent, $revision);
 			return;
 		}
-		$rev_last=$revision;
+		$rev_last = $revision;
 	}
-	&createfirst($project, $branch, $rev_last);	
+
+	close(REVS);
+
+	createfirst($project, $branch, $rev_last);
 }
 
 sub processproject
 {
-	my $project=$_[0];
-	print "Processing project: $project\n";
-	
-	chdir "$GIT_ROOT/$project" or die "Can't change to project directory: $project";
-	
+	my ($project) = @_;
+	print("Processing project: $project\n");
+
+	chdir("$GIT_ROOT/$project" or die "Can't change to project directory: $project");
+
 	system("git fetch --all") == 0
-		or die "GIT fetch failed.";
-	
-	open(REFS, "git for-each-ref --format=\"\%(refname:short)\" refs/remotes/$REMOTE |grep -v HEAD|");
-	my @allbranches=<REFS>;
-	close(REFS);
-	
+		or die("GIT fetch failed.");
+
 	my @branches;
-	
+
 	for my $branch (@BRANCH_ORDER)
 	{
 		push(@branches, "$branch");
 	}
-	
-	for my $branch (@allbranches)
+
+	open(REFS, "git for-each-ref --format=\"\%(refname:short)\" refs/remotes/$REMOTE |grep -v HEAD|");
+	for my $branch (<REFS>)
 	{
 		chomp($branch);
-		$branch=~s/$REMOTE\/(.*)/\1/;
+		$branch =~ s/$REMOTE\/(.*)/\1/;
 		if(!grep($branch eq "$_", @BRANCH_ORDER))
 		{
 			push(@branches, $branch);
 		}
 	}
+	close(REFS);
 
-	print "Branches: @branches\n";
-	
 	for my $branch (@branches)
 	{
-		&processbranch($project, $branch);
+		processbranch($project, $branch);
 	}
-	
+
 }
 
 sub syncsvnfiles
 {
 	my ($project, $svndir) = @_;
+
 	system("cp -RT $GIT_ROOT/$project $svndir") == 0
-		or die "Failed to sync dir: $GIT_ROOT/$project to: $svndir";
-	
+		or die("Failed to sync dir: $GIT_ROOT/$project to: $svndir");
+
 	system("rm -rf $svndir/.git") == 0
-		or die "Could not remove .git dir from svn working copy";
+		or die("Could not remove .git dir from svn working copy");
 
 	open(TOADD, "svn status |grep \?|");
 	for my $path (<TOADD>)
@@ -190,9 +192,9 @@ sub syncsvnfiles
 		chomp($path);
 		if ("$path" ne "?" )
 		{
-			$path=~s/\?\s+(.*)/\1/;
+			$path =~ s/\?\s+(.*)/\1/;
 			system("svn add \"$path\"") == 0
-				or die "Could not add files to svn index";
+				or die("Could not add files to svn index");
 		}
 	}
 	close(TOADD);
@@ -201,56 +203,55 @@ sub syncsvnfiles
 sub processbranch
 {
 	my ($project, $branch) = @_;
-	print "Processing $branch of $project\n";
+	print("Processing $branch of $project\n");
 
-	chdir "$GIT_ROOT/$project" or die "Can't change to project directory: $project";
-	
-	my $tag=`git tag -l svnbranch/$branch | wc -l`;
+	chdir("$GIT_ROOT/$project" or die "Can't change to project directory: $project");
+
+	my $tag = `git tag -l svnbranch/$branch | wc -l`;
 	chomp($tag);
 	if($tag < 1)
 	{
-		&findparent($branch, $project);
+		findparent($branch, $project);
 	}
-	
-	chdir "$GIT_ROOT/$project" or die "Can't change to project directory: $project";
-	
-	my $lastrev=`git show-ref -s --dereference svnbranch/$branch`;
+
+	chdir("$GIT_ROOT/$project" or die "Can't change to project directory: $project");
+
+	my $lastrev = `git show-ref -s --dereference svnbranch/$branch`;
 	chomp($lastrev);
-	
-	print "Last revision synced: $lastrev\n";
-	
-	my $svndir="$SVN_ROOT/$project/$branch";
-	
+
+	print("Last revision synced: $lastrev\n");
+
+	my $svndir = "$SVN_ROOT/$project/$branch";
+
 	mkpath $svndir;
-	
+
 	open(BRANCHREVS, "git rev-list --first-parent --reverse ${lastrev}..${REMOTE}/${branch}|");
 	for my $revision (<BRANCHREVS>)
 	{
 		chomp($revision);
-		print "Preparing to write revision $revision\n";
-		chdir "$GIT_ROOT/$project";
+		print("Preparing to write revision $revision\n");
+		chdir("$GIT_ROOT/$project");
 
 		system("git log -1 --format=format:\"\%B\%nCommitter: \%an - Date: \%aD\" $revision |grep -v git-svn-id >$COMMIT_MESG/${revision}") == 0
-			or die "Could not get log message";
-		
-		my $svn_url = &geturlforbranch($branch);
-		
+			or die("Could not get log message");
+
+		my $svn_url = geturlforbranch($branch);
+
 		open(COMMIT, "git svn commit-diff -r HEAD $revision~1 $revision  $svn_url -F $COMMIT_MESG/$revision 2>&1 |");
 		while(<COMMIT>)
 		{
-			print $_;
 			chomp;
 			if($_ =~ m/^Committed/)
 			{
 				#Committed rxxxx
 				$_ =~ s/Committed r([0-9]*)/\1/;
 				open(REVCACHE, ">>$SVN_ROOT/$project.revcache");
-				print REVCACHE "$_ $branch $revision\n";
+				print(REVCACHE "$_ $branch $revision\n");
 				close(REVCACHE);
 
 				chdir "$GIT_ROOT/$project";
 				system("git tag -f svnbranch/$branch $revision") == 0
-					or die "Could not create GIT tracking tag";
+					or die("Could not create GIT tracking tag");
 			}
 		}
 		close(COMMIT);
@@ -261,22 +262,21 @@ sub processbranch
 sub parse_config_file 
 {
 
-    my ($config_line, $Name, $Value, $Config, $File);
+    my ($File, $Config) = @_;
+    my ($config_line, $Name, $Value);
 
-    ($File, $Config) = @_;
-    
-    print "Loading $File\n";
+    print("Loading $File\n");
 
-    open (CONFIG, "$File")
-	    or die "ERROR: Config file not found : $File";
+    open(CONFIG, "$File")
+	    or die("ERROR: Config file not found : $File");
 
     while (<CONFIG>) 
     {
-        $config_line=$_;
-        chomp ($config_line);
+        $config_line = $_;
+        chomp($config_line);
         $config_line =~ s/^\s*//;
         $config_line =~ s/\s*$//;
-        if ( ($config_line !~ /^#/) && ($config_line ne "") )
+        if (($config_line !~ /^#/) && ($config_line ne ""))
         {
             ($Name, $Value) = split (/=/, $config_line);
             $$Config{$Name} = $Value;
@@ -290,23 +290,23 @@ sub parse_config_file
 sub doimport
 {
 	mkpath $COMMIT_MESG;
-	
+
 	for my $projectconfig (glob "$GIT_ROOT/*.config")
 	{
-		my $project=$projectconfig;
+		my $project = $projectconfig;
 		my %config;
-		$project=~s/(.*)\.config/\1/;
-		&parse_config_file($projectconfig,\%config);
-		
-		$SVN_BASE_URL=$config{"SVN_URL"};
-		my $BRANCHES=$config{"BRANCH_ORDER"};
-		@BRANCH_ORDER=split(",", $BRANCHES);
-		$TRUNK=$BRANCH_ORDER[0];
-		
-		&processproject(basename($project));
+		$project =~ s/(.*)\.config/\1/;
+		parse_config_file($projectconfig,\%config);
+
+		$SVN_BASE_URL = $config{"SVN_URL"};
+		my $BRANCHES = $config{"BRANCH_ORDER"};
+		@BRANCH_ORDER = split(",", $BRANCHES);
+		$TRUNK = $BRANCH_ORDER[0];
+
+		processproject(basename($project));
 	}
 
 }
 
-&doimport;
+doimport;
 
