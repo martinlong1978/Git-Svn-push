@@ -30,6 +30,9 @@ my @BRANCH_ORDER;
 my $SVN_BASE_URL;
 my $TRUNK;
 
+# Get the branch url. Will be a different scheme for trunk
+# /trunk or /branches/branch/trunk.
+#
 sub geturlforbranch
 {
 	my ($branch) = @_;
@@ -44,6 +47,8 @@ sub geturlforbranch
 	}
 }
 
+# Create a new branch from parent at a specific GIT revision.
+#
 sub branchfromparent
 {
 	my ($project, $branch, $br_parent, $revision) = @_;
@@ -53,6 +58,7 @@ sub branchfromparent
 
 	print "Branching $branch from $br_parent at rev $revision\n";
 
+	# Lookup the SVN revision at which to create the branch.
 	my $svnrev = `cat $SVN_ROOT/$project.revcache |grep $revision |cut -d " " -f 1`;
 	chomp($svnrev);
 
@@ -60,11 +66,13 @@ sub branchfromparent
 	system("git tag -f svnbranch/$branch $revision") == 0 
 		or die "Could not create tracking tag";
 
-	#Branch 
+	#Do the branching 
 	system("svn copy --parents  $svn_from\@$svnrev $svn_to -m \"Branch for $branch\"") == 0
 		or die "Could not create branch";
 }
 
+# Create the first branch - the one for which no parent can be found.
+#
 sub createfirst
 {
 	my ($project, $branch, $revision) = @_;
@@ -81,7 +89,7 @@ sub createfirst
 	system("git checkout $revision") == 0
 		or die "GIT Failure";
 
-	#Create branch and checkout working copy
+	#Create trunk and checkout working copy
 	system("svn mkdir --parents $svn_url -m \"Creating trunk\"") == 0
 		or die("Could not connect to $svn_url");
 	mkpath("$SVN_ROOT/$project/temp")
@@ -97,15 +105,22 @@ sub createfirst
 	system("svn commit -m \"Initial commit.\"") == 0
 		or die("Commit failed.");
 
-	# temp dir is no longer needed
+	# temp dir is no longer needed - we'll commit the diffs from now
 	system("rm -rf \"$SVN_ROOT/$project/temp\"");
 }
 
-sub findparent
+# Find the parent and branch point by looping back through the branch rev-list
+# Until we find a rev that has already been committed to another branch. Branches
+# are evaluated in specified order, followed by any unspecified, to ensure that 
+# branch parenting is as desired.
+#
+sub initbranch
 {
 	my ($branch, $project) = @_;
 	print("Looking for parent of: $branch\n");
 
+	# Load the revision cache into a hash. We do this here locally
+	# for each branch, as it is generally a rare operation. 
 	open(REVCACHE, "$SVN_ROOT/$project.revcache");
 	my %revcache = ();
 	for my $cacheentry (<REVCACHE>)
@@ -120,6 +135,9 @@ sub findparent
 
 	open(REVS, "git rev-list --first-parent remotes/$REMOTE/$branch |") or die "Broken";
 
+	# Loop back through the rev-list. First parents only. We don't care about 
+	# feature branches that are already merged. The merge commit will do - that's
+	# all svn would give anyway.
 	for my $revision (<REVS>)
 	{
 		chomp($revision);
@@ -127,6 +145,7 @@ sub findparent
 		my $br_parent = $revcache{$revision};
 		if($br_parent ne "")
 		{
+			# Found it... now BRANCH!
 			branchfromparent($project, $branch, $br_parent, $revision);
 			return;
 		}
@@ -134,10 +153,13 @@ sub findparent
 	}
 
 	close(REVS);
-
+	
+	# No findy? Must be trunk then.
 	createfirst($project, $branch, $rev_last);
 }
 
+# Called per-project to do all processing of that project.
+#
 sub processproject
 {
 	my ($project) = @_;
@@ -145,21 +167,26 @@ sub processproject
 
 	chdir("$GIT_ROOT/$project" or die "Can't change to project directory: $project");
 
+	# Update the GIT repo from it's origin (or specified remote)
 	system("git fetch --all") == 0
 		or die("GIT fetch failed.");
 
+	# Load this with the branches to process, ordered correctly.
 	my @branches;
 
+	# First, the branches specified. Trunk will be first.
 	for my $branch (@BRANCH_ORDER)
 	{
 		push(@branches, "$branch");
 	}
 
+	# Then any that are left over
 	open(REFS, "git for-each-ref --format=\"\%(refname:short)\" refs/remotes/$REMOTE |grep -v HEAD|");
 	for my $branch (<REFS>)
 	{
 		chomp($branch);
 		$branch =~ s/$REMOTE\/(.*)/\1/;
+		# Only add it if it wasn't in the specified list. (ie already added)
 		if(!grep($branch eq "$_", @BRANCH_ORDER))
 		{
 			push(@branches, $branch);
@@ -167,22 +194,28 @@ sub processproject
 	}
 	close(REFS);
 
+	# Now process the branches
 	for my $branch (@branches)
 	{
 		processbranch($project, $branch);
 	}
 }
 
+# This is only done for the first commit, for which commit-diff cannot work.
+#
 sub syncsvnfiles
 {
 	my ($project, $svndir) = @_;
 
+	# Copy all of the files to the SVN working directory
 	system("cp -RT $GIT_ROOT/$project $svndir") == 0
 		or die("Failed to sync dir: $GIT_ROOT/$project to: $svndir");
 
+	# Remove the .git stuff... we really don't want to commit that.
 	system("rm -rf $svndir/.git") == 0
 		or die("Could not remove .git dir from svn working copy");
 
+	# Add anything that isn't already (should be everything) 
 	open(TOADD, "svn status |grep \?|");
 	for my $path (<TOADD>)
 	{
@@ -197,31 +230,32 @@ sub syncsvnfiles
 	close(TOADD);
 }
 
+# Commit the branch commits across to SVN
+#
 sub processbranch
 {
 	my ($project, $branch) = @_;
 	print("Processing $branch of $project\n");
 
-	chdir("$GIT_ROOT/$project" or die "Can't change to project directory: $project");
+	chdir("$GIT_ROOT/$project") or die("Can't change to project directory: $project");
 
+	# If the tracking tag doesn't exist, then we need to initialise the branch 
+	# in svn.
 	my $tag = `git tag -l svnbranch/$branch | wc -l`;
 	chomp($tag);
 	if($tag < 1)
 	{
-		findparent($branch, $project);
+		initbranch($branch, $project);
 	}
 
-	chdir("$GIT_ROOT/$project" or die "Can't change to project directory: $project");
+	chdir("$GIT_ROOT/$project") or die("Can't change to project directory: $project");
 
+	# Find the last rev synced, from the tracking tag we created.
 	my $lastrev = `git show-ref -s --dereference svnbranch/$branch`;
 	chomp($lastrev);
-
 	print("Last revision synced: $lastrev\n");
 
-	my $svndir = "$SVN_ROOT/$project/$branch";
-
-	mkpath $svndir;
-
+	# Loop through all the revs between then and now (again, first parent chain only).
 	open(BRANCHREVS, "git rev-list --first-parent --reverse ${lastrev}..${REMOTE}/${branch}|");
 	for my $revision (<BRANCHREVS>)
 	{
@@ -229,17 +263,24 @@ sub processbranch
 		print("Preparing to write revision $revision\n");
 		chdir("$GIT_ROOT/$project");
 
+		# Write the commit message to a file
 		system("git log -1 --format=format:\"\%B\%nCommitter: \%an - Date: \%aD\" $revision |grep -v git-svn-id >$COMMIT_MESG/${revision}") == 0
 			or die("Could not get log message");
 
 		my $svn_url = geturlforbranch($branch);
 
+		# Commit using commit-diff - this avoids the need to mess around with 
+		# working copies and files
 		open(COMMIT, "git svn commit-diff -r HEAD $revision~1 $revision  $svn_url -F $COMMIT_MESG/$revision 2>&1 |");
+		
+		# Make sure it commited. Cache the rev number to spot branch 
+		# points later, and also, update the tracking tag in GIT. 
 		while(<COMMIT>)
 		{
 			chomp;
 			if($_ =~ m/^Committed/)
 			{
+				print("$_\n");
 				#Committed rxxxx
 				$_ =~ s/Committed r([0-9]*)/\1/;
 				open(REVCACHE, ">>$SVN_ROOT/$project.revcache");
@@ -252,10 +293,15 @@ sub processbranch
 			}
 		}
 		close(COMMIT);
+		
+		#Clean up the commit message file.
+		unlink("$COMMIT_MESG/$revision");
 	}
 	close(BRANCHREVS);
 }
 
+# Read in the config file for the repo. 
+#
 sub parse_config_file 
 {
     my ($File, $Config) = @_;
@@ -282,10 +328,13 @@ sub parse_config_file
     close(CONFIG);
 }
 
+# Main sub. Do the import!
+#
 sub doimport
 {
 	mkpath $COMMIT_MESG;
 
+	# Loop through any project with a .config file
 	for my $projectconfig (glob "$GIT_ROOT/*.config")
 	{
 		my $project = $projectconfig;
