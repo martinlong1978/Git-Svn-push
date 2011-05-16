@@ -17,9 +17,9 @@
 use strict;
 use File::Path;
 use File::Basename;
-use File::Copy::Recursive;
+use FileHandle;
 
-my $SYNC_BASE="/home/martin/gittest";
+my $SYNC_BASE="/export/home/javadev/gitsync";
 my $GIT_ROOT="$SYNC_BASE/GIT";
 my $SVN_ROOT="$SYNC_BASE/workingdata";
 my $COMMIT_MESG="$SVN_ROOT/messages";
@@ -164,7 +164,7 @@ sub processproject
 {
 	my ($project) = @_;
 	print("Processing project: $project\n");
-
+	
 	chdir("$GIT_ROOT/$project" or die "Can't change to project directory: $project");
 
 	# Update the GIT repo from it's origin (or specified remote)
@@ -208,7 +208,7 @@ sub syncsvnfiles
 	my ($project, $svndir) = @_;
 
 	# Copy all of the files to the SVN working directory
-	system("cp -RT $GIT_ROOT/$project $svndir") == 0
+	system("cp -R $GIT_ROOT/$project/* $svndir") == 0
 		or die("Failed to sync dir: $GIT_ROOT/$project to: $svndir");
 
 	# Remove the .git stuff... we really don't want to commit that.
@@ -236,6 +236,9 @@ sub processbranch
 {
 	my ($project, $branch) = @_;
 	print("Processing $branch of $project\n");
+
+	$ENV{'GIT_DIR'} = "$GIT_ROOT/$project/.git";
+	$ENV{'GIT_WORK_TREE'} = "$GIT_ROOT/$project";
 
 	chdir("$GIT_ROOT/$project") or die("Can't change to project directory: $project");
 
@@ -278,6 +281,7 @@ sub processbranch
 		while(<COMMIT>)
 		{
 			chomp;
+			print("$_\n");
 			if($_ =~ m/^Committed/)
 			{
 				print("$_\n");
