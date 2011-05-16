@@ -344,6 +344,12 @@ sub doimport
 		my $project = $projectconfig;
 		my %config;
 		$project =~ s/(.*)\.config/\1/;
+
+		# Lock the project, one at a time please
+		open(LCK, ">${project}.lock");
+		flock(LCK, 2) or die "Cannot lock file";
+		print(LCK "Locked");
+		
 		parse_config_file($projectconfig,\%config);
 
 		$SVN_BASE_URL = $config{"SVN_URL"};
@@ -352,6 +358,9 @@ sub doimport
 		$TRUNK = $BRANCH_ORDER[0];
 
 		processproject(basename($project));
+		
+		close(LCK);
+		unlink ("${project}.lock");
 	}
 }
 
