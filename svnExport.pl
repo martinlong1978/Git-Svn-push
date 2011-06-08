@@ -283,7 +283,7 @@ sub processbranch
 
 		# Commit using commit-diff - this avoids the need to mess around with 
 		# working copies and files
-		open(COMMIT, "git svn commit-diff -r HEAD $revision~1 $revision  $svn_url -F $COMMIT_MESG/$revision 2>&1 |");
+		open(COMMIT, "git svn commit-diff -r HEAD svnbranch/$branch $revision  $svn_url -F $COMMIT_MESG/$revision 2>&1 |");
 		
 		# Make sure it commited. Cache the rev number to spot branch 
 		# points later, and also, update the tracking tag in GIT. 
@@ -363,6 +363,7 @@ sub doimport
 
 		$SVN_BASE_URL = $config{"SVN_URL"};
 		my $BRANCHES = $config{"BRANCH_ORDER"};
+		@BRANCH_ORDER = ();
 		@BRANCH_ORDER = split(",", $BRANCHES);
 		$TRUNK = $BRANCH_ORDER[0];
 
