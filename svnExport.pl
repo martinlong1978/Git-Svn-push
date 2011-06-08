@@ -178,6 +178,8 @@ sub processproject
 	# Load this with the branches to process, ordered correctly.
 	my @branches;
 
+	print("Configured branches: @BRANCH_ORDER\n");
+
 	# First, the branches specified. Trunk will be first.
 	for my $branch (@BRANCH_ORDER)
 	{
@@ -194,7 +196,12 @@ sub processproject
 		# Only add it if it wasn't in the specified list. (ie already added)
 		if(!grep($branch eq "$_", @BRANCH_ORDER))
 		{
-			push(@branches, $branch);
+			# Exclude personal feature branches
+			if($branch !~ m/feature/)
+			{
+				print("Adding branch: $branch\n");
+				push(@branches, $branch);
+			}
 		}
 	}
 	close(REFS);
