@@ -165,7 +165,11 @@ sub processproject
 	my ($project) = @_;
 	print("Processing project: $project\n");
 	
-	chdir("$GIT_ROOT/$project" or die "Can't change to project directory: $project");
+	$ENV{'GIT_DIR'} = "$GIT_ROOT/$project/.git";
+	$ENV{'GIT_WORK_TREE'} = "$GIT_ROOT/$project";
+
+	
+	chdir("$GIT_ROOT/$project") or die ("Can't change to project directory: $project");
 
 	# Update the GIT repo from it's origin (or specified remote)
 	system("git fetch --all") == 0
@@ -182,6 +186,7 @@ sub processproject
 
 	# Then any that are left over
 	open(REFS, "git for-each-ref --format=\"\%(refname:short)\" refs/remotes/$REMOTE |grep -v HEAD|");
+	
 	for my $branch (<REFS>)
 	{
 		chomp($branch);
@@ -236,9 +241,6 @@ sub processbranch
 {
 	my ($project, $branch) = @_;
 	print("Processing $branch of $project\n");
-
-	$ENV{'GIT_DIR'} = "$GIT_ROOT/$project/.git";
-	$ENV{'GIT_WORK_TREE'} = "$GIT_ROOT/$project";
 
 	chdir("$GIT_ROOT/$project") or die("Can't change to project directory: $project");
 
