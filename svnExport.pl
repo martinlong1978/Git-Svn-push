@@ -92,21 +92,27 @@ sub createfirst
 	#Create trunk and checkout working copy
 	system("svn mkdir --parents $svn_url -m \"Creating trunk\"") == 0
 		or die("Could not connect to $svn_url");
-	mkpath("$SVN_ROOT/$project/temp")
-		or die("Couldn't make svn temp store: $SVN_ROOT/$project/temp");
-	chdir("$SVN_ROOT/$project/temp")
-		or die("Couldn't jump to svn temp store: $SVN_ROOT/$project/temp");
-	system("svn co $svn_url ../temp") == 0
+
+	chdir("$SVN_ROOT")
+		or die("Couldn't jump to svn temp store: $SVN_ROOT");
+	system("svn co $svn_url $project") == 0
 		or die("Could not connect to $svn_url");
 
+
+	chdir("$SVN_ROOT/$project")
+		or die("Couldn't jump to svn temp store: $SVN_ROOT/$project");
+
 	# Initialise the first commit. GIT won't do this for us :(	
-	syncsvnfiles($project, "$SVN_ROOT/$project/temp");
+	syncsvnfiles($project, "$SVN_ROOT");
 
 	system("svn commit -m \"Initial commit.\"") == 0
 		or die("Commit failed.");
+		
+	chdir("$SVN_ROOT")
+		or die("Couldn't jump to svn temp store: $SVN_ROOT");
 
 	# temp dir is no longer needed - we'll commit the diffs from now
-	system("rm -rf \"$SVN_ROOT/$project/temp\"");
+	system("rm -rf \"$SVN_ROOT/$project\"");
 }
 
 # Find the parent and branch point by looping back through the branch rev-list
@@ -220,11 +226,15 @@ sub syncsvnfiles
 	my ($project, $svndir) = @_;
 
 	# Copy all of the files to the SVN working directory
-	system("cp -R $GIT_ROOT/$project/* $svndir") == 0
+	
+	
+	system("(cd $GIT_ROOT/ ; tar cf - $project) | (cd $svndir ; tar xvf -)") == 0
 		or die("Failed to sync dir: $GIT_ROOT/$project to: $svndir");
+	#system("cp -R $GIT_ROOT/$project/* $svndir") == 0
+	#	or die("Failed to sync dir: $GIT_ROOT/$project to: $svndir");
 
 	# Remove the .git stuff... we really don't want to commit that.
-	system("rm -rf $svndir/.git") == 0
+	system("rm -rf $svndir/$project/.git") == 0
 		or die("Could not remove .git dir from svn working copy");
 
 	# Add anything that isn't already (should be everything) 
