@@ -181,6 +181,10 @@ sub processproject
 	system("git fetch --all") == 0
 		or die("GIT fetch failed.");
 
+	# Fetch review notes
+	system("git fetch origin +refs/notes/*:refs/notes/*") == 0
+		or die("GIT fetch failed.");
+
 	# Load this with the branches to process, ordered correctly.
 	my @branches;
 
@@ -286,7 +290,7 @@ sub processbranch
 		chdir("$GIT_ROOT/$project");
 
 		# Write the commit message to a file
-		system("git log -1 --format=format:\"\%B\%nCommitter: \%an - Date: \%aD\" $revision |grep -v git-svn-id >$COMMIT_MESG/${revision}") == 0
+		system("git log -1 --show-notes=review --format=format:\"\%B\%nCommitter: \%an - Date: \%aD\%n\%N\" $revision |grep -v git-svn-id >$COMMIT_MESG/${revision}") == 0
 			or die("Could not get log message");
 
 		my $svn_url = geturlforbranch($branch);
