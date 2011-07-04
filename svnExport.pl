@@ -234,8 +234,6 @@ sub syncsvnfiles
 	
 	system("(cd $GIT_ROOT/ ; tar cf - $project) | (cd $svndir ; tar xvf -)") == 0
 		or die("Failed to sync dir: $GIT_ROOT/$project to: $svndir");
-	#system("cp -R $GIT_ROOT/$project/* $svndir") == 0
-	#	or die("Failed to sync dir: $GIT_ROOT/$project to: $svndir");
 
 	# Remove the .git stuff... we really don't want to commit that.
 	system("rm -rf $svndir/$project/.git") == 0
@@ -307,7 +305,6 @@ sub processbranch
 			print("$_\n");
 			if($_ =~ m/^Committed/)
 			{
-				print("$_\n");
 				#Committed rxxxx
 				$_ =~ s/Committed r([0-9]*)/\1/;
 				open(REVCACHE, ">>$SVN_ROOT/$project.revcache");
@@ -317,7 +314,15 @@ sub processbranch
 				chdir "$GIT_ROOT/$project";
 				system("git tag -f svnbranch/$branch $revision") == 0
 					or die("Could not create GIT tracking tag");
-			}
+			}elsif($_ =~ m/^No.changes/)
+			{
+				# If no commit was made, still update the tag. No need to 
+				# add to rev cache (we have no rev anyway). Walker will just keep
+				# walking and branch from a revision that has a change.
+				chdir "$GIT_ROOT/$project";
+				system("git tag -f svnbranch/$branch $revision") == 0
+					or die("Could not create GIT tracking tag");
+			} 
 		}
 		close(COMMIT);
 		
