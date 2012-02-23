@@ -12,7 +12,12 @@ work without SVN working copies, and maybe ever with a bare GIT repo.
 
 # Usage
 
-    svnExport.pl
+    svnExport.pl [GIT-SVN-push-root]
+
+    GIT-SVN-push-root is a directory which should be created as per the
+    "Installation" section below.  This defaults to
+    "/export/home/javadev/gitsync" for historical reasons.
+
 
 # Installation
 
@@ -40,16 +45,7 @@ And you're good to go.
 
 # Configuration
 
-svnExport.pl may be configured by editing the variables at the beginning at the
-script.
-
-	my $SYNC_BASE="/export/git-svn-push";
-	my $GIT_ROOT="$SYNC_BASE/GIT";
-	my $SVN_ROOT="$SYNC_BASE/workingdata";
-	my $COMMIT_MESG="$SVN_ROOT/messages";
-	my $REMOTE="origin";
-
-Also per project configuration must be added
+Per project configuration must be added:
 
 	project.config
 		Has the format:
@@ -71,7 +67,6 @@ Also per project configuration must be added
 
 # TODO
 
- * Pass `$SYNC_ROOT` as a command line argument
  * Add git branch glob
  * Sync tags
  * Use `mktemp -d` for creating temporary directories

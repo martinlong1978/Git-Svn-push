@@ -19,10 +19,11 @@ use File::Path;
 use File::Basename;
 use FileHandle;
 
+# SYNC_BASE can be overridden by passing it as the first argument
 my $SYNC_BASE="/export/home/javadev/gitsync";
-my $GIT_ROOT="$SYNC_BASE/GIT";
-my $SVN_ROOT="$SYNC_BASE/workingdata";
-my $COMMIT_MESG="$SVN_ROOT/messages";
+my $GIT_ROOT;
+my $SVN_ROOT;
+my $COMMIT_MESG;
 my $REMOTE="origin";
 
 # These are loaded per-project
@@ -373,6 +374,13 @@ sub parse_config_file
 #
 sub doimport
 {
+	if (scalar(@ARGV) != 0) {
+		$SYNC_BASE = $ARGV[0];
+	}
+	$GIT_ROOT="$SYNC_BASE/GIT";
+	$SVN_ROOT="$SYNC_BASE/workingdata";
+	$COMMIT_MESG="$SVN_ROOT/messages";
+
 	mkpath $COMMIT_MESG;
 
 	# Loop through any project with a .config file
