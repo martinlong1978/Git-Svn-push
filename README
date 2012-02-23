@@ -1,7 +1,74 @@
-This is a simple one-way GIT to SVN sync. It will push up your GIT branches to a central SVN server. You should lock down the SVN server so that only a single user can commit - the one which is running GitSvnPush, otherwise any commits made by other people will be reverted (effectively overwritten) by the script.
+This is a simple one-way GIT to SVN sync. It will push up your GIT branches to
+a central SVN server. You should lock down the SVN server so that only a single
+user can commit - the one which is running GitSvnPush, otherwise any commits
+made by other people will be reverted (effectively overwritten) by the script.
 
-It will push up all of your branches, finding, where possible, the correct branch point. It does not write any mergeinfo - that should never be needed if the SVN repo remains read-only. 
+It will push up all of your branches, finding, where possible, the correct
+branch point. It does not write any mergeinfo - that should never be needed if
+the SVN repo remains read-only.
 
-Still needs tidying up. I'd like to try and figure out someday how to make this work without SVN working copies, and maybe ever with a bare GIT repo. 
+Still needs tidying up. I'd like to try and figure out someday how to make this
+work without SVN working copies, and maybe ever with a bare GIT repo.
 
+# Usage
+
+    svnExport.pl
+
+# Installation
+
+1. Create a directory within which all the work will be done:
+
+        $ mkdir -p /export/git-svn-push
+
+2. Modify svnExport.pl to point at that directory by editing line 22 to say:
+
+        $ my $SYNC_BASE="/export/git-svn-push";
+
+3. Create additional directories:
+
+        $ mkdir -p /export/git-svn-push/workingdata;
+        $ mkdir -p /export/git-svn-push/workingdata/messages;
+
+4. Clone your git repo into `/export/git-svn-push/GIT/project-name`
+
+        $ git clone git://example.com/project-name.git /export/git-svn-push/GIT/project-name
+
+5. Create a configuration file for your project in
+   `/export/git-svn-push/GIT/project-name.config` (see Configuration below)
+
+And you're good to go.
+
+# Configuration
+
+svnExport.pl may be configured by editing the variables at the beginning at the
+script.
+
+	my $SYNC_BASE="/export/git-svn-push";
+	my $GIT_ROOT="$SYNC_BASE/GIT";
+	my $SVN_ROOT="$SYNC_BASE/workingdata";
+	my $COMMIT_MESG="$SVN_ROOT/messages";
+	my $REMOTE="origin";
+
+Also per project configuration must be added
+
+	project.config
+		Has the format:
+			# Comments
+			key=value
+		Required fields:
+			SVN_URL=https://example.com/example-repo
+			BRANCH_ORDER=branch1,branch2,branch3
+		In this case the SVN URL for trunk is
+		https://example.com/example-repo/trunk and the branches are according
+		to the glob https://example.com/example-repo/branches/*/trunk .  This
+		differs from the std-layout that git svn expects.
+	project.lock
+
+# TODO
+
+ * Allow pushing to a svn repo with a more usual branch layout
+ * Pass `$SYNC_ROOT` as a command line argument
+ * Add git branch glob
+ * Sync tags
+ * Use `mktemp -d` for creating temporary directories
 
