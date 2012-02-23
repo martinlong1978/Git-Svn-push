@@ -24,13 +24,46 @@ my $SYNC_BASE="/export/home/javadev/gitsync";
 my $GIT_ROOT;
 my $SVN_ROOT;
 my $COMMIT_MESG;
-my $REMOTE="origin";
+
+my $GIT_FETCH_REF;
+my $GIT_BRANCHES_GLOB;
 
 # These are loaded per-project
 my @BRANCH_ORDER;
-my $SVN_FETCH_URL;
-my $SVN_BRANCHES_URL;
-my $TRUNK;
+my $SVN_REPO_URL; # example: "https://example.com/project"
+my $SVN_BRANCHES_GLOB; # default: "branches/*/trunk"
+my $SVN_TRUNK_EXT; # default: "trunk"
+
+# globmatch("abc*ghi", "abcdefghi") == "def"
+sub globmatch {
+	my ($glob, $text) = @_;
+	$glob =~ s/\*/(.*)/;
+	if ($text =~ m/$glob/)
+	{
+		return $1;
+	}
+	else
+	{
+		return undef;
+	}
+}
+
+# globinsert("abc*ghi", "def") == "abcdefghi"
+sub globinsert {
+	my ($_, $text) = @_;
+	s/\*/$text/;
+	return $_;
+}
+
+sub ref2branch {
+	my ($ref) = @_;
+	return globmatch($GIT_BRANCHES_GLOB, $ref);
+}
+
+sub branch2ref {
+	my ($branch) = @_;
+	return globinsert($GIT_BRANCHES_GLOB, $branch);
+}
 
 # Get the branch url. Will be a different scheme for trunk
 # /trunk or /branches/branch/trunk.
@@ -38,18 +71,19 @@ my $TRUNK;
 sub geturlforbranch
 {
 	my ($branch) = @_;
+	if (substr $SVN_REPO_URL, -1, 1 == "/") {
+		die("Don't put a / at the end of SVN_REPO_URL (" . $SVN_REPO_URL . ")");
+	}
 
-	if($branch eq $TRUNK)
+	if($branch eq ref2branch($GIT_FETCH_REF))
 	{
-		return $SVN_FETCH_URL;
+		return "$SVN_REPO_URL/$SVN_TRUNK_EXT";
 	}
 	else
 	{
-		# $SVN_BRANCHES_URL has a * where the branch name should go.  This is
+		# $SVN_BRANCHES_GLOB has a * where the branch name should go.  This is
 		# similar to the globbing style git-svn deals with these things.
-		my $BUL = $SVN_BRANCHES_URL;
-		$BUL ~= s/\*/$branch/;
-		return $BUL;
+		return "$SVN_REPO_URL/" . globinsert($SVN_BRANCHES_GLOB, $branch);
 	}
 }
 
@@ -145,7 +179,7 @@ sub initbranch
 
 	my $rev_last;
 
-	open(REVS, "git rev-list --first-parent remotes/$REMOTE/$branch |") or die "Broken";
+	open(REVS, "git rev-list --first-parent " . branch2ref($branch) . " |") or die "Broken";
 
 	# Loop back through the rev-list. First parents only. We don't care about 
 	# feature branches that are already merged. The merge commit will do - that's
@@ -203,12 +237,12 @@ sub processproject
 	}
 
 	# Then any that are left over
-	open(REFS, "git for-each-ref --format=\"\%(refname:short)\" refs/remotes/$REMOTE |grep -v HEAD|");
+	open(REFS, "git for-each-ref --format=\"\%(refname)\" $GIT_BRANCHES_GLOB $GIT_FETCH_REF |grep -v HEAD|");
 	
 	for my $branch (<REFS>)
 	{
 		chomp($branch);
-		$branch =~ s/$REMOTE\/(.*)/\1/;
+		$branch = ref2branch($branch);
 		# Only add it if it wasn't in the specified list. (ie already added)
 		if(!grep($branch eq "$_", @BRANCH_ORDER))
 		{
@@ -267,6 +301,8 @@ sub processbranch
 	my ($project, $branch) = @_;
 	print("Processing $branch of $project\n");
 
+	my $ref = branch2ref($branch);
+
 	chdir("$GIT_ROOT/$project") or die("Can't change to project directory: $project");
 
 	# If the tracking tag doesn't exist, then we need to initialise the branch 
@@ -286,7 +322,7 @@ sub processbranch
 	print("Last revision synced: $lastrev\n");
 
 	# Loop through all the revs between then and now (again, first parent chain only).
-	open(BRANCHREVS, "git rev-list --first-parent --reverse ${lastrev}..${REMOTE}/${branch}|");
+	open(BRANCHREVS, "git rev-list --first-parent --reverse ${lastrev}..${ref}|");
 	for my $revision (<BRANCHREVS>)
 	{
 		chomp($revision);
@@ -342,8 +378,8 @@ sub processbranch
 #
 sub parse_config_file 
 {
-    my ($File, $Config) = @_;
-    my ($config_line, $Name, $Value);
+    my ($File) = @_;
+    my ($config_line, $Name, $Value, %Config);
 
     print("Loading $File\n");
 
@@ -351,8 +387,7 @@ sub parse_config_file
 	    or die("ERROR: Config file not found : $File");
 
     # Defaults:
-    $$Config{"SVN_FETCH"} = "trunk";
-    $$Config{"SVN_BRANCHES"} = "branches/*/trunk";
+    $Config{"SVN_BRANCHES"} = "branches/*/trunk:refs/remotes/origin/*";
 
     while (<CONFIG>) 
     {
@@ -363,11 +398,23 @@ sub parse_config_file
         if (($config_line !~ /^#/) && ($config_line ne ""))
         {
             ($Name, $Value) = split (/=/, $config_line);
-            $$Config{$Name} = $Value;
+            $Config{$Name} = $Value;
         }
     }
 
     close(CONFIG);
+
+	if (!defined($Config{"SVN_FETCH"})) {
+		if (defined($Config{"BRANCH_ORDER"})) {
+			# Backwards compatibility
+			my $trunk=${split(",", $Config{"BRANCH_ORDER"})}[0];
+			$Config{"SVN_FETCH"} = "trunk:refs/remotes/origin/$trunk";
+		}
+		else {
+			$Config{"SVN_FETCH"} = "trunk:refs/remotes/origin/master";
+		}
+	}
+	return %Config;
 }
 
 # Main sub. Do the import!
@@ -395,14 +442,19 @@ sub doimport
 		flock(LCK, 2) or die "Cannot lock file";
 		print(LCK "Locked");
 		
-		parse_config_file($projectconfig,\%config);
+		%config = parse_config_file($projectconfig);
 
-		$SVN_FETCH_URL = $config{"SVN_URL"} . "/" . $config{"SVN_FETCH"};
-		$SVN_BRANCHES_URL = $config{"SVN_URL"} . "/" . $config{"SVN_BRANCHES"};
+		($SVN_TRUNK_EXT, $GIT_FETCH_REF) = split(":", $config{"SVN_FETCH"});
+		($SVN_BRANCHES_GLOB, $GIT_BRANCHES_GLOB) = split(":", $config{"SVN_BRANCHES"});
+
+		$SVN_REPO_URL = $config{"SVN_URL"};
 		my $BRANCHES = $config{"BRANCH_ORDER"};
 		@BRANCH_ORDER = ();
 		@BRANCH_ORDER = split(",", $BRANCHES);
-		$TRUNK = $BRANCH_ORDER[0];
+
+		if (! defined globmatch($GIT_BRANCHES_GLOB, $GIT_FETCH_REF)) {
+			die "Not supported: $GIT_FETCH_REF must match $GIT_BRANCHES_GLOB";
+		}
 
 		processproject(basename($project));
 		

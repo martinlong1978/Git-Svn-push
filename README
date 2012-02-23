@@ -53,10 +53,10 @@ Per project configuration must be added:
 			key=value
 		Required fields:
 			SVN_URL=https://example.com/example-repo
-			BRANCH_ORDER=branch1,branch2,branch3
 		Optional fields:
-			SVN_FETCH=trunk
-			SVN_BRANCHES=branches/*
+			BRANCH_ORDER=branch1,branch2,branch3
+			SVN_FETCH=trunk:refs/remotes/origin/master
+			SVN_BRANCHES=branches/*:refs/remotes/origin/*
 		In this case the SVN URL for trunk is
 		https://example.com/example-repo/trunk and the branches are according
 		to the glob https://example.com/example-repo/branches/* .  This
@@ -87,7 +87,11 @@ for which we have an svn commit and `svn cp` from there
 
 # TODO
 
- * Add git branch glob
+ * Do things on a commit-by-commit basis rather than branch-by-branch
+   * Commit to branch that first parent is on if we are still on that git
+     branch, otherwise commit to new branch
+ * Store full svn url in rev map
  * Sync tags
  * Use `mktemp -d` for creating temporary directories
+ * Write automated tests
 
