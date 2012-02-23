@@ -58,15 +58,19 @@ Also per project configuration must be added
 		Required fields:
 			SVN_URL=https://example.com/example-repo
 			BRANCH_ORDER=branch1,branch2,branch3
+		Optional fields:
+			SVN_FETCH=trunk
+			SVN_BRANCHES=branches/*
 		In this case the SVN URL for trunk is
 		https://example.com/example-repo/trunk and the branches are according
-		to the glob https://example.com/example-repo/branches/*/trunk .  This
-		differs from the std-layout that git svn expects.
+		to the glob https://example.com/example-repo/branches/* .  This
+		differs from the std-layout that git svn expects.  SVN_FETCH defaults
+		to trunk and SVN_BRANCHES to (the non-standard) "branches/*/trunk".
+		This behaviour is preserved for backwards compatibility.
 	project.lock
 
 # TODO
 
- * Allow pushing to a svn repo with a more usual branch layout
  * Pass `$SYNC_ROOT` as a command line argument
  * Add git branch glob
  * Sync tags

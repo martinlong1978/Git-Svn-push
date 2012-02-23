@@ -27,7 +27,8 @@ my $REMOTE="origin";
 
 # These are loaded per-project
 my @BRANCH_ORDER;
-my $SVN_BASE_URL;
+my $SVN_FETCH_URL;
+my $SVN_BRANCHES_URL;
 my $TRUNK;
 
 # Get the branch url. Will be a different scheme for trunk
@@ -39,11 +40,15 @@ sub geturlforbranch
 
 	if($branch eq $TRUNK)
 	{
-		return "$SVN_BASE_URL/trunk";
+		return $SVN_FETCH_URL;
 	}
 	else
 	{
-		return "$SVN_BASE_URL/branches/$branch/trunk";
+		# $SVN_BRANCHES_URL has a * where the branch name should go.  This is
+		# similar to the globbing style git-svn deals with these things.
+		my $BUL = $SVN_BRANCHES_URL;
+		$BUL ~= s/\*/$branch/;
+		return $BUL;
 	}
 }
 
@@ -344,6 +349,10 @@ sub parse_config_file
     open(CONFIG, "$File")
 	    or die("ERROR: Config file not found : $File");
 
+    # Defaults:
+    $$Config{"SVN_FETCH"} = "trunk";
+    $$Config{"SVN_BRANCHES"} = "branches/*/trunk";
+
     while (<CONFIG>) 
     {
         $config_line = $_;
@@ -380,7 +389,8 @@ sub doimport
 		
 		parse_config_file($projectconfig,\%config);
 
-		$SVN_BASE_URL = $config{"SVN_URL"};
+		$SVN_FETCH_URL = $config{"SVN_URL"} . "/" . $config{"SVN_FETCH"};
+		$SVN_BRANCHES_URL = $config{"SVN_URL"} . "/" . $config{"SVN_BRANCHES"};
 		my $BRANCHES = $config{"BRANCH_ORDER"};
 		@BRANCH_ORDER = ();
 		@BRANCH_ORDER = split(",", $BRANCHES);
