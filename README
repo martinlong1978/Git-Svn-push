@@ -65,6 +65,26 @@ Per project configuration must be added:
 		This behaviour is preserved for backwards compatibility.
 	project.lock
 
+# How it works
+
+A mapping between svn and git commits is kept in
+/export/git-svn-push/workingdata/$project.revcache  It takes the form:
+
+    [svn revision] [branch name] [git commit sha]
+
+Example:
+
+    1234 foo 0123456789ABCDEF0123456789ABCDEF01234567
+    1235 trunk ABCDEF012345670123456789ABCDEF0123456789
+
+This allows us to map from svn revision to git commits
+
+A git tag is kept at refs/tags/svnbranch/[branch name] so we can tell when it
+has moved on and which commits have been made to git that are not yet in svn.
+
+When a new branch is discovered we look back in the history to find a git commit
+for which we have an svn commit and `svn cp` from there
+
 # TODO
 
  * Add git branch glob
