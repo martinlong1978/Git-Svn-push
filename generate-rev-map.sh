@@ -16,7 +16,7 @@ do
 	git_svn_id=$(git log -1 --format=format:%B "$sha" | grep git-svn-id)
 	if [[ $git_svn_id =~ $trunk_regex ]]
 	then
-		branch=master
+		branch=trunk
 		svn_revision=${BASH_REMATCH[1]}
 	elif [[ $git_svn_id =~ $branches_regex ]]
 	then
