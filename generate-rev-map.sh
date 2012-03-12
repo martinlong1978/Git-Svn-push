@@ -13,7 +13,7 @@ not_completed_refs=
 
 git rev-list $(git for-each-ref --format='%(refname)' refs/remotes/) $not_completed_refs --reverse | while read sha
 do
-	git_svn_id=$(git log -1 --format=format:%B "$sha" | grep git-svn-id)
+	git_svn_id=$(git log -1 --format=format:%b "$sha" | grep git-svn-id)
 	if [[ $git_svn_id =~ $trunk_regex ]]
 	then
 		branch=trunk
