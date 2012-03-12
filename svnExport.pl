@@ -34,6 +34,18 @@ my $SVN_REPO_URL; # example: "https://example.com/project"
 my $SVN_BRANCHES_GLOB; # default: "branches/*/trunk"
 my $SVN_TRUNK_EXT; # default: "trunk"
 
+my $dry_run=0;
+
+sub checked_system {
+	if ($dry_run) {
+		print @_, "\n";
+		return 0;
+	}
+	else {
+		return system(@_);
+	}
+}
+
 # globmatch("abc*ghi", "abcdefghi") == "def"
 sub globmatch {
 	my ($glob, $text) = @_;
@@ -103,11 +115,11 @@ sub branchfromparent
 	chomp($svnrev);
 
 	#Create tracking tag in GIT
-	system("git tag -f svnbranch/$branch $revision") == 0 
+	checked_system("git tag -f svnbranch/$branch $revision") == 0
 		or die "Could not create tracking tag";
 
 	#Do the branching 
-	system("svn copy --parents  $svn_from\@$svnrev $svn_to -m \"Branch for $branch\"") == 0
+	checked_system("svn copy --parents  $svn_from\@$svnrev $svn_to -m \"Branch for $branch\"") == 0
 		or die "Could not create branch";
 }
 
@@ -122,7 +134,7 @@ sub createfirst
 	print("New project branch: $branch\n");
 
 	#Create tracking tag in GIT
-	system("git tag -f svnbranch/$branch $revision") == 0
+	checked_system("git tag -f svnbranch/$branch $revision") == 0
 		or die "GIT Failure";
 
 	#Checkout for initial commit
@@ -130,7 +142,7 @@ sub createfirst
 		or die "GIT Failure";
 
 	#Create trunk and checkout working copy
-	system("svn mkdir --parents $svn_url -m \"Creating trunk\"") == 0
+	checked_system("svn mkdir --parents $svn_url -m \"Creating trunk\"") == 0
 		or die("Could not connect to $svn_url");
 
 	chdir("$SVN_ROOT")
@@ -145,7 +157,7 @@ sub createfirst
 	# Initialise the first commit. GIT won't do this for us :(	
 	syncsvnfiles($project, "$SVN_ROOT");
 
-	system("svn commit -m \"Initial commit.\"") == 0
+	checked_system("svn commit -m \"Initial commit.\"") == 0
 		or die("Commit failed.");
 		
 	chdir("$SVN_ROOT")
@@ -287,7 +299,7 @@ sub syncsvnfiles
 		if ("$path" ne "?" )
 		{
 			$path =~ s/\?\s+(.*)/\1/;
-			system("svn add \"$path\"") == 0
+			checked_system("svn add \"$path\"") == 0
 				or die("Could not add files to svn index");
 		}
 	}
@@ -311,6 +323,7 @@ sub processbranch
 	chomp($tag);
 	if($tag < 1)
 	{
+		print "No tag svnbranch/$branch found.  Creating new svn branch\n";
 		initbranch($branch, $project);
 	}
 
@@ -337,7 +350,13 @@ sub processbranch
 
 		# Commit using commit-diff - this avoids the need to mess around with 
 		# working copies and files
-		open(COMMIT, "git svn commit-diff -r HEAD svnbranch/$branch $revision  $svn_url -F $COMMIT_MESG/$revision 2>&1 |");
+		if ($dry_run) {
+			open(COMMIT, "echo Committed r123456 |");
+			print "git svn commit-diff -r HEAD svnbranch/$branch $revision  $svn_url -F $COMMIT_MESG/$revision";
+		}
+		else {
+			open(COMMIT, "git svn commit-diff -r HEAD svnbranch/$branch $revision  $svn_url -F $COMMIT_MESG/$revision 2>&1 |");
+		}
 		
 		# Make sure it commited. Cache the rev number to spot branch 
 		# points later, and also, update the tracking tag in GIT. 
@@ -350,11 +369,16 @@ sub processbranch
 				#Committed rxxxx
 				$_ =~ s/Committed r([0-9]*)/\1/;
 				open(REVCACHE, ">>$SVN_ROOT/$project.revcache");
-				print(REVCACHE "$_ $branch $revision\n");
+				if ($dry_run) {
+					print "Would append '$_ $branch $revision' to $SVN_ROOT/$project.revcache"
+				}
+				else {
+					print(REVCACHE "$_ $branch $revision\n");
+				}
 				close(REVCACHE);
 
 				chdir "$GIT_ROOT/$project";
-				system("git tag -f svnbranch/$branch $revision") == 0
+				checked_system("git tag -f svnbranch/$branch $revision") == 0
 					or die("Could not create GIT tracking tag");
 			}elsif($_ =~ m/^No.changes/)
 			{
@@ -362,7 +386,7 @@ sub processbranch
 				# add to rev cache (we have no rev anyway). Walker will just keep
 				# walking and branch from a revision that has a change.
 				chdir "$GIT_ROOT/$project";
-				system("git tag -f svnbranch/$branch $revision") == 0
+				checked_system("git tag -f svnbranch/$branch $revision") == 0
 					or die("Could not create GIT tracking tag");
 			} 
 		}
