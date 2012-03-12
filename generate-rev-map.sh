@@ -11,7 +11,7 @@ branches_regex="git-svn-id: $SVN_REPO_URL/branches/(\S*)@([0-9]*)"
 
 not_completed_refs=
 
-git rev-list $(git for-each-ref --format='%(refname)' refs/remotes/) $not_completed_refs --reverse | while read sha
+git rev-list --all $not_completed_refs --reverse | while read sha
 do
 	git_svn_id=$(git log -1 --format=format:%b "$sha" | grep git-svn-id)
 	if [[ $git_svn_id =~ $trunk_regex ]]
