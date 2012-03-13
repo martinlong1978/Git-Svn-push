@@ -35,6 +35,7 @@ my $SVN_BRANCHES_GLOB; # default: "branches/*/trunk"
 my $SVN_TRUNK_EXT; # default: "trunk"
 
 my $dry_run=0;
+my $slomo=0;
 
 sub checked_system {
 	if ($dry_run) {
@@ -43,6 +44,14 @@ sub checked_system {
 	}
 	else {
 		return system(@_);
+	}
+}
+
+# slomo_sleep calls are inserted after making changes to svn, so that if this
+# script goes wrong at least it will go wrong slowly
+sub slomo_sleep {
+	if ($slomo) {
+		sleep(10);
 	}
 }
 
@@ -121,6 +130,7 @@ sub branchfromparent
 	#Do the branching 
 	checked_system("svn copy --parents  $svn_from\@$svnrev $svn_to -m \"Branch for $branch\"") == 0
 		or die "Could not create branch";
+	slomo_sleep();
 }
 
 # Create the first branch - the one for which no parent can be found.
@@ -165,6 +175,8 @@ sub createfirst
 
 	# temp dir is no longer needed - we'll commit the diffs from now
 	system("rm -rf \"$SVN_ROOT/$project\"");
+
+	slomo_sleep();
 }
 
 # Find the parent and branch point by looping back through the branch rev-list
@@ -394,6 +406,8 @@ sub processbranch
 		
 		#Clean up the commit message file.
 		unlink("$COMMIT_MESG/$revision");
+
+		slomo_sleep();
 	}
 	close(BRANCHREVS);
 }
