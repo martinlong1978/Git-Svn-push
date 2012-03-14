@@ -364,7 +364,8 @@ sub processbranch
 		# working copies and files
 		if ($dry_run) {
 			open(COMMIT, "echo Committed r123456 |");
-			print "git svn commit-diff -r HEAD svnbranch/$branch $revision  $svn_url -F $COMMIT_MESG/$revision";
+			print "git svn commit-diff -r HEAD svnbranch/$branch $revision  $svn_url -F $COMMIT_MESG/$revision\n";
+			system("cat $COMMIT_MESG/$revision");
 		}
 		else {
 			open(COMMIT, "git svn commit-diff -r HEAD svnbranch/$branch $revision  $svn_url -F $COMMIT_MESG/$revision 2>&1 |");
@@ -382,7 +383,7 @@ sub processbranch
 				$_ =~ s/Committed r([0-9]*)/\1/;
 				open(REVCACHE, ">>$SVN_ROOT/$project.revcache");
 				if ($dry_run) {
-					print "Would append '$_ $branch $revision' to $SVN_ROOT/$project.revcache"
+					print "Would append '$_ $branch $revision' to $SVN_ROOT/$project.revcache\n";
 				}
 				else {
 					print(REVCACHE "$_ $branch $revision\n");
