@@ -1,3 +1,9 @@
+****************************************************************************
+IMPORTANT Version 2.0 is not backwards compatible with version 1.0. You will
+need to make configuration file changes, and possibly rebuild the map
+file manually. 
+****************************************************************************
+
 This is a simple one-way GIT to SVN sync. It will push up your GIT branches to
 a central SVN server. You should lock down the SVN server so that only a single
 user can commit - the one which is running GitSvnPush, otherwise any commits
